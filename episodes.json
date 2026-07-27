@@ -1,0 +1,18 @@
+[
+  {
+    "id": 1,
+    "title": "Серія 1: Початок шляху",
+    "video": "https://stream.mux.com/VZ39tz02v28O00y0133A008sN343yOG00G32432TFLWZf8.m3u8",
+    "subs": {
+      "uk": "https://media-files.vidstack.io/sprite-fight/subs/english.vtt"
+    }
+  },
+  {
+    "id": 2,
+    "title": "Серія 2: Пробудження сили",
+    "video": "https://stream.mux.com/VZ39tz02v28O00y0133A008sN343yOG00G32432TFLWZf8.m3u8",
+    "subs": {
+      "uk": "https://media-files.vidstack.io/sprite-fight/subs/english.vtt"
+    }
+  }
+]
