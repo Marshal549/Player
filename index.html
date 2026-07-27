@@ -1,0 +1,286 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Player</title>
+
+  <!-- Vidstack стилі -->
+  <link rel="stylesheet" href="https://cdn.vidstack.io/player/theme.css" />
+  <link rel="stylesheet" href="https://cdn.vidstack.io/player/video.css" />
+
+  <style>
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      padding: 20px;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+      background: #0f172a;
+      color: #ffffff;
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    }
+
+    .player-container {
+      width: 100%;
+      max-width: 960px;
+      aspect-ratio: 16 / 9;
+      background: #000;
+      border-radius: 12px;
+      overflow: hidden;
+      box-shadow: 0 10px 30px rgba(0, 0, 0, .5);
+    }
+
+    .custom-controls {
+      width: 100%;
+      max-width: 960px;
+      margin-top: 15px;
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: center;
+      gap: 10px;
+    }
+
+    .btn, .select-input {
+      padding: 10px 16px;
+      border-radius: 8px;
+      border: 1px solid #334155;
+      background: #1e293b;
+      color: white;
+      cursor: pointer;
+      font-size: 15px;
+      font-weight: 600;
+      transition: .2s;
+      outline: none;
+    }
+
+    .btn:hover, .select-input:hover {
+      background: #3b82f6;
+      border-color: #3b82f6;
+    }
+
+    .select-input option {
+      background: #0f172a;
+      color: white;
+    }
+
+    @media(max-width: 600px) {
+      body {
+        padding: 10px;
+      }
+      .btn, .select-input {
+        width: 100%;
+      }
+    }
+  </style>
+</head>
+
+<body>
+
+<!-- Відеоплеєр -->
+<div class="player-container">
+  <media-player
+    id="donghua-player"
+    title="Завантаження..."
+    aspect-ratio="16/9"
+    crossorigin="anonymous"
+  >
+    <media-provider id="media-provider"></media-provider>
+    <media-video-layout></media-video-layout>
+  </media-player>
+</div>
+
+<!-- Панель керування серіями -->
+<div class="custom-controls">
+  <select id="episode-select" class="select-input" onchange="playEpisode(Number(this.value))">
+    <option value="" disabled selected>Завантаження серій...</option>
+  </select>
+
+  <button class="btn" onclick="playNextEpisode()">
+    Наступна серія ⏭
+  </button>
+
+  <button class="btn" onclick="skipIntro()">
+    Пропустити опенінг (+85 с)
+  </button>
+
+  <button class="btn" onclick="seekRelative(-10)">
+    ⏪ Назад 10 с
+  </button>
+
+  <button class="btn" onclick="seekRelative(10)">
+    Вперед 10 с ⏩
+  </button>
+</div>
+
+<!-- Скрипт Vidstack -->
+<script type="module" src="https://cdn.vidstack.io/player"></script>
+
+<script>
+  const player = document.getElementById("donghua-player");
+  const mediaProvider = document.getElementById("media-provider");
+  const episodeSelect = document.getElementById("episode-select");
+
+  let episodes = [];
+  let currentEpisodeIndex = 0;
+  let currentStorageKey = "";
+  let lastSavedSecond = 0;
+
+  // 1. Безпечне завантаження JSON
+  async function loadEpisodes() {
+    if (window.location.protocol === "file:") {
+      console.warn("Увага: Запуск файлу локально (file://) блокує fetch(). Використовуйте локальний сервер (наприклад, Live Server у VS Code).");
+    }
+
+    try {
+      const response = await fetch("episodes.json");
+      if (!response.ok) throw new Error(`HTTP помилка! Статус: ${response.status}`);
+      
+      episodes = await response.json();
+      
+      if (!Array.isArray(episodes) || episodes.length === 0) {
+        throw new Error("Файл episodes.json порожній або має некоректну структуру.");
+      }
+
+      renderEpisodeSelector();
+      playEpisode(0, false); // Завантажуємо першу серію без автоплею
+    } catch (error) {
+      console.error("Помилка завантаження контенту:", error);
+      episodeSelect.innerHTML = `<option disabled selected>Помилка завантаження episodes.json</option>`;
+    }
+  }
+
+  // 2. Рендеринг випадаючого списку
+  function renderEpisodeSelector() {
+    episodeSelect.innerHTML = "";
+    episodes.forEach((ep, index) => {
+      const option = document.createElement("option");
+      option.value = index;
+      option.textContent = ep.title || `Серія ${index + 1}`;
+      episodeSelect.appendChild(option);
+    });
+  }
+
+  // 3. Перемикання серій з коректним оновленням Vidstack
+  function playEpisode(index, autoPlay = true) {
+    if (index < 0 || index >= episodes.length) return;
+
+    currentEpisodeIndex = index;
+    const ep = episodes[index];
+
+    currentStorageKey = `donghua_ep_${ep.id || index}_position`;
+    episodeSelect.value = index;
+
+    // Стабільне оновлення джерела відео через attributes/properties
+    player.setAttribute("src", ep.video);
+    player.setAttribute("title", ep.title || "Дунхуа");
+
+    // Динамічна заміна субтитрів
+    updateSubtitles(ep.subs);
+
+    if (autoPlay) {
+      // Стабільний запуск відтворення після зміни src
+      setTimeout(() => {
+        player.play().catch(err => console.log("Автовідтворення блоковано браузером:", err));
+      }, 100);
+    }
+  }
+
+  // 4. Безпечне оновлення субтитрів
+  function updateSubtitles(subs) {
+    mediaProvider.innerHTML = ""; // Очищаємо попередні доріжки
+
+    if (!subs || typeof subs !== "object") return;
+
+    const langLabels = {
+      uk: "Українська",
+      en: "English",
+      ru: "Русский"
+    };
+
+    Object.entries(subs).forEach(([lang, url]) => {
+      if (!url) return;
+      const track = document.createElement("track");
+      track.src = url;
+      track.kind = "subtitles";
+      track.srclang = lang;
+      track.label = langLabels[lang] || lang.toUpperCase();
+
+      if (lang === "uk") {
+        track.default = true;
+      }
+
+      mediaProvider.appendChild(track);
+    });
+  }
+
+  // 5. Перехід на наступну серію
+  function playNextEpisode() {
+    if (currentEpisodeIndex + 1 < episodes.length) {
+      playEpisode(currentEpisodeIndex + 1, true);
+    } else {
+      alert("Це остання серія сезону!");
+    }
+  }
+
+  // 6. Управління часом
+  function seekRelative(seconds) {
+    if (!player) return;
+    const duration = player.duration || Infinity;
+    let newTime = player.currentTime + seconds;
+    player.currentTime = Math.max(0, Math.min(newTime, duration));
+  }
+
+  function skipIntro() {
+    seekRelative(85);
+  }
+
+  // --- ОБРОБНИКИ ПОДІЙ ---
+  if (player) {
+    // Відновлення прогресу
+    player.addEventListener("loaded-metadata", () => {
+      if (!currentStorageKey) return;
+      const savedTime = localStorage.getItem(currentStorageKey);
+      if (savedTime) {
+        const time = Number(savedTime);
+        if (!isNaN(time) && time < (player.duration - 10)) {
+          player.currentTime = time;
+        }
+      }
+    });
+
+    // Оптимізоване збереження (раз на 2 секунди)
+    player.addEventListener("time-update", () => {
+      if (!currentStorageKey || player.paused) return;
+      const currentSecond = Math.floor(player.currentTime);
+      if (currentSecond % 2 === 0 && currentSecond !== lastSavedSecond) {
+        lastSavedSecond = currentSecond;
+        localStorage.setItem(currentStorageKey, player.currentTime.toString());
+      }
+    });
+
+    // Завершення серії
+    player.addEventListener("ended", () => {
+      if (currentStorageKey) {
+        localStorage.removeItem(currentStorageKey);
+      }
+      playNextEpisode();
+    });
+
+    player.addEventListener("error", (err) => {
+      console.error("Помилка відтворення файлу:", err);
+    });
+  }
+
+  // Ініціалізація
+  loadEpisodes();
+</script>
+
+</body>
+</html>
